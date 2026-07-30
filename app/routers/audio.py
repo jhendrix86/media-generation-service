@@ -51,7 +51,7 @@ async def text_to_speech(
         
     except Exception as e:
         logger.error(f"Failed to generate audio: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/clone")
@@ -81,7 +81,7 @@ async def clone_voice(
         
     except Exception as e:
         logger.error(f"Failed to clone voice: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/enhance")
@@ -108,4 +108,4 @@ async def enhance_audio(
         
     except Exception as e:
         logger.error(f"Failed to enhance audio: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))

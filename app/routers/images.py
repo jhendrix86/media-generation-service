@@ -51,7 +51,7 @@ async def generate_image(
         
     except Exception as e:
         logger.error(f"Failed to generate image: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/batch")
@@ -85,7 +85,7 @@ async def batch_generate_images(
         
     except Exception as e:
         logger.error(f"Failed to batch generate images: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{image_id}")
@@ -115,7 +115,7 @@ async def get_image(
         
     except Exception as e:
         logger.error(f"Failed to get image: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/")
@@ -157,4 +157,4 @@ async def list_images(
         
     except Exception as e:
         logger.error(f"Failed to list images: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))

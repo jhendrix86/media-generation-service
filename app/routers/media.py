@@ -40,7 +40,7 @@ async def upload_media(
         
     except Exception as e:
         logger.error(f"Failed to upload media: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{media_id}")
@@ -68,7 +68,7 @@ async def get_media(
         
     except Exception as e:
         logger.error(f"Failed to get media: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/")
@@ -110,7 +110,7 @@ async def list_media(
         
     except Exception as e:
         logger.error(f"Failed to list media: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{media_id}")
@@ -135,4 +135,4 @@ async def delete_media(
         
     except Exception as e:
         logger.error(f"Failed to delete media: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))

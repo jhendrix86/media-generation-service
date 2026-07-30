@@ -48,7 +48,7 @@ class MediaAsset(Base):
     usage_count = Column(Integer, default=0)
     
     # Metadata
-    metadata = Column(JSON, nullable=True)
+    extra_metadata = Column(JSON, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

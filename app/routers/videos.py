@@ -53,7 +53,7 @@ async def generate_video(
         
     except Exception as e:
         logger.error(f"Failed to generate video: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/edit")
@@ -80,7 +80,7 @@ async def edit_video(
         
     except Exception as e:
         logger.error(f"Failed to edit video: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{video_id}")
@@ -109,4 +109,4 @@ async def get_video(
         
     except Exception as e:
         logger.error(f"Failed to get video: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))

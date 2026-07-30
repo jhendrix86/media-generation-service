@@ -51,7 +51,7 @@ async def create_template(
         
     except Exception as e:
         logger.error(f"Failed to create template: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{template_id}")
@@ -86,7 +86,7 @@ async def get_template(
         
     except Exception as e:
         logger.error(f"Failed to get template: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/")
@@ -131,4 +131,4 @@ async def list_templates(
         
     except Exception as e:
         logger.error(f"Failed to list templates: {e}")
-        raise HTTPException(status_code=500, detail(str(e))
+        raise HTTPException(status_code=500, detail=str(e))
