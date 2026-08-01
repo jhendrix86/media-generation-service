@@ -2,42 +2,62 @@
 Media router
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+import os
+import uuid
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
 from app.database import get_db
+from app.models.media_asset import MediaAsset, MediaType
+from app.utils.serializers import model_to_dict
 
 router = APIRouter()
+
+STORAGE_ROOT = Path(os.getenv("MEDIA_STORAGE_ROOT", "media_storage"))
 
 
 @router.post("/upload")
 async def upload_media(
     file: UploadFile,
-    media_type: str,
+    media_type: MediaType,
     db: AsyncSession = Depends(get_db)
 ):
-    """Upload media file"""
+    """Upload media file to local storage and record it"""
     try:
         logger.info(f"Uploading media file: {file.filename}")
-        
-        # In production, this would save to storage and create database record
-        # For now, return a mock response
-        media = {
-            "id": "media_123",
-            "name": file.filename,
-            "media_type": media_type,
-            "file_size": 1024000,
-            "storage_path": f"/media/{file.filename}",
-            "url": f"https://example.com/{file.filename}",
-            "uploaded_at": datetime.utcnow().isoformat()
-        }
-        
-        logger.info(f"Media uploaded: {media['id']}")
-        return media
-        
+
+        STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        asset_id = uuid.uuid4()
+        safe_name = f"{asset_id}_{file.filename}"
+        storage_path = STORAGE_ROOT / safe_name
+
+        contents = await file.read()
+        storage_path.write_bytes(contents)
+
+        media = MediaAsset(
+            id=asset_id,
+            name=file.filename,
+            media_type=media_type,
+            file_name=file.filename,
+            file_size=len(contents),
+            mime_type=file.content_type,
+            storage_path=str(storage_path),
+            storage_type="local",
+        )
+
+        db.add(media)
+        await db.commit()
+        await db.refresh(media)
+
+        logger.info(f"Media uploaded: {media.id}")
+        return model_to_dict(media)
+
     except Exception as e:
         logger.error(f"Failed to upload media: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -51,21 +71,15 @@ async def get_media(
     """Get media details"""
     try:
         logger.info(f"Getting media details for {media_id}")
-        
-        # In production, this would query from database
-        # For now, return a mock response
-        media = {
-            "id": media_id,
-            "name": "product-image.png",
-            "media_type": "image",
-            "file_size": 1024000,
-            "url": "https://example.com/product-image.png",
-            "tags": ["product", "marketing"],
-            "usage_count": 15
-        }
-        
-        return media
-        
+
+        media = await db.get(MediaAsset, uuid.UUID(media_id))
+        if media is None:
+            raise HTTPException(status_code=404, detail=f"Media not found: {media_id}")
+
+        return model_to_dict(media)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get media: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -73,7 +87,7 @@ async def get_media(
 
 @router.get("/")
 async def list_media(
-    media_type: Optional[str] = None,
+    media_type: Optional[MediaType] = None,
     category: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -82,24 +96,25 @@ async def list_media(
     """List media assets"""
     try:
         logger.info("Listing media assets")
-        
-        # In production, this would query from database with filters
-        # For now, return a mock response
-        media = [
-            {
-                "id": "media_001",
-                "name": "product-image.png",
-                "media_type": "image",
-                "url": "https://example.com/product-image.png",
-                "usage_count": 15
-            }
-        ]
-        
+
+        query = select(MediaAsset)
+        if media_type is not None:
+            query = query.where(MediaAsset.media_type == media_type)
+        if category is not None:
+            query = query.where(MediaAsset.category == category)
+
+        count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = count_result.scalar_one()
+
+        query = query.order_by(MediaAsset.created_at.desc()).limit(limit).offset(offset)
+        result = await db.execute(query)
+        media = [model_to_dict(m) for m in result.scalars().all()]
+
         return {
-            "total": len(media),
+            "total": total,
             "media": media,
             "filters": {
-                "media_type": media_type,
+                "media_type": media_type.value if media_type else None,
                 "category": category
             },
             "pagination": {
@@ -107,7 +122,7 @@ async def list_media(
                 "offset": offset
             }
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to list media: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -121,18 +136,28 @@ async def delete_media(
     """Delete media asset"""
     try:
         logger.info(f"Deleting media {media_id}")
-        
-        # In production, this would delete from storage and database
-        # For now, return a mock response
-        result = {
+
+        media = await db.get(MediaAsset, uuid.UUID(media_id))
+        if media is None:
+            raise HTTPException(status_code=404, detail=f"Media not found: {media_id}")
+
+        storage_path = Path(media.storage_path) if media.storage_path else None
+
+        await db.delete(media)
+        await db.commit()
+
+        if storage_path and storage_path.exists():
+            storage_path.unlink()
+
+        logger.info(f"Media deleted: {media_id}")
+        return {
             "id": media_id,
             "deleted": True,
             "deleted_at": datetime.utcnow().isoformat()
         }
-        
-        logger.info(f"Media deleted: {media_id}")
-        return result
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to delete media: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,14 +2,18 @@
 Templates router
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 from typing import Optional
-from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from loguru import logger
 
 from app.database import get_db
+from app.models.template import Template
+from app.utils.serializers import model_to_dict
 
 router = APIRouter()
 
@@ -31,24 +35,28 @@ async def create_template(
     """Create a media template"""
     try:
         logger.info(f"Creating template: {request.name}")
-        
-        # In production, this would save to database
-        # For now, return a mock response
-        template = {
-            "id": "template_123",
-            "name": request.name,
-            "description": request.description,
-            "template_type": request.template_type,
-            "config": request.config,
-            "default_params": request.default_params,
-            "is_active": True,
-            "usage_count": 0,
-            "created_at": datetime.utcnow().isoformat()
-        }
-        
-        logger.info(f"Template created: {template['id']}")
-        return template
-        
+
+        existing = await db.execute(select(Template).where(Template.name == request.name))
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(status_code=409, detail=f"Template already exists: {request.name}")
+
+        template = Template(
+            name=request.name,
+            description=request.description,
+            template_type=request.template_type,
+            config=request.config,
+            default_params=request.default_params,
+        )
+
+        db.add(template)
+        await db.commit()
+        await db.refresh(template)
+
+        logger.info(f"Template created: {template.id}")
+        return model_to_dict(template)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create template: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -62,28 +70,15 @@ async def get_template(
     """Get template details"""
     try:
         logger.info(f"Getting template details for {template_id}")
-        
-        # In production, this would query from database
-        # For now, return a mock response
-        template = {
-            "id": template_id,
-            "name": "Product Image Template",
-            "description": "Template for product showcase images",
-            "template_type": "image",
-            "config": {
-                "style": "professional",
-                "lighting": "studio",
-                "background": "white"
-            },
-            "default_params": {
-                "size": "1024x1024",
-                "format": "png"
-            },
-            "usage_count": 45
-        }
-        
-        return template
-        
+
+        template = await db.get(Template, uuid.UUID(template_id))
+        if template is None:
+            raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
+
+        return model_to_dict(template)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get template: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -99,26 +94,20 @@ async def list_templates(
     """List templates"""
     try:
         logger.info("Listing templates")
-        
-        # In production, this would query from database with filters
-        # For now, return a mock response
-        templates = [
-            {
-                "id": "template_001",
-                "name": "Product Image Template",
-                "template_type": "image",
-                "usage_count": 45
-            },
-            {
-                "id": "template_002",
-                "name": "Social Media Video Template",
-                "template_type": "video",
-                "usage_count": 32
-            }
-        ]
-        
+
+        query = select(Template)
+        if template_type is not None:
+            query = query.where(Template.template_type == template_type)
+
+        count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = count_result.scalar_one()
+
+        query = query.order_by(Template.created_at.desc()).limit(limit).offset(offset)
+        result = await db.execute(query)
+        templates = [model_to_dict(t) for t in result.scalars().all()]
+
         return {
-            "total": len(templates),
+            "total": total,
             "templates": templates,
             "filters": {
                 "template_type": template_type
@@ -128,7 +117,7 @@ async def list_templates(
                 "offset": offset
             }
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to list templates: {e}")
         raise HTTPException(status_code=500, detail=str(e))

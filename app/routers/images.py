@@ -2,16 +2,26 @@
 Image router
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+import uuid
 from datetime import datetime
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from loguru import logger
 
 from app.database import get_db
+from app.models.image import Image, ImageStatus
+from app.services.api_engine import APIEngine
+from app.utils.serializers import model_to_dict
 
 router = APIRouter()
+
+
+def get_api_engine(request: Request) -> APIEngine:
+    return request.app.state.api_engine
 
 
 class GenerateImageRequest(BaseModel):
@@ -22,33 +32,51 @@ class GenerateImageRequest(BaseModel):
     format: str = "png"
     style: Optional[str] = None
     model: str = "dall-e-3"
+    api_preference: Optional[str] = None
+
+
+async def _generate_and_persist(request: GenerateImageRequest, api_engine: APIEngine, db: AsyncSession) -> Image:
+    result = await api_engine.generate_image(
+        prompt=request.prompt,
+        size=request.size,
+        format=request.format,
+        style=request.style,
+        api_preference=request.api_preference,
+    )
+
+    image = Image(
+        prompt=request.prompt,
+        negative_prompt=request.negative_prompt,
+        model=request.model,
+        size=request.size,
+        format=request.format,
+        style=request.style,
+        status=ImageStatus.COMPLETED if result.get("success") else ImageStatus.FAILED,
+        url=result.get("url"),
+        extra_metadata={"generation_result": result},
+        completed_at=datetime.utcnow(),
+    )
+    db.add(image)
+    return image
 
 
 @router.post("/generate")
 async def generate_image(
     request: GenerateImageRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    api_engine: APIEngine = Depends(get_api_engine)
 ):
     """Generate an image"""
     try:
         logger.info(f"Generating image with prompt: {request.prompt[:50]}...")
-        
-        # In production, this would call DALL-E or Stable Diffusion API
-        # For now, return a mock response
-        image = {
-            "id": "image_123",
-            "prompt": request.prompt,
-            "model": request.model,
-            "size": request.size,
-            "format": request.format,
-            "status": "completed",
-            "url": "https://example.com/generated-image.png",
-            "created_at": datetime.utcnow().isoformat()
-        }
-        
-        logger.info(f"Image generated: {image['id']}")
-        return image
-        
+
+        image = await _generate_and_persist(request, api_engine, db)
+        await db.commit()
+        await db.refresh(image)
+
+        logger.info(f"Image generated: {image.id}")
+        return model_to_dict(image)
+
     except Exception as e:
         logger.error(f"Failed to generate image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -56,33 +84,32 @@ async def generate_image(
 
 @router.post("/batch")
 async def batch_generate_images(
-    prompts: list,
+    prompts: List[str],
     size: str = "1024x1024",
     format: str = "png",
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    api_engine: APIEngine = Depends(get_api_engine)
 ):
     """Batch generate images"""
     try:
         logger.info(f"Batch generating {len(prompts)} images")
-        
-        # In production, this would generate images in parallel
-        # For now, return a mock response
-        images = [
-            {
-                "id": f"image_{i}",
-                "prompt": prompt,
-                "status": "completed",
-                "url": f"https://example.com/image-{i}.png"
-            }
-            for i, prompt in enumerate(prompts)
-        ]
-        
+
+        images = []
+        for prompt in prompts:
+            req = GenerateImageRequest(prompt=prompt, size=size, format=format)
+            image = await _generate_and_persist(req, api_engine, db)
+            images.append(image)
+
+        await db.commit()
+        for image in images:
+            await db.refresh(image)
+
         logger.info(f"Batch images generated: {len(images)}")
         return {
             "total": len(images),
-            "images": images
+            "images": [model_to_dict(i) for i in images]
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to batch generate images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -96,23 +123,15 @@ async def get_image(
     """Get image details"""
     try:
         logger.info(f"Getting image details for {image_id}")
-        
-        # In production, this would query from database
-        # For now, return a mock response
-        image = {
-            "id": image_id,
-            "prompt": "A futuristic city skyline at sunset",
-            "model": "dall-e-3",
-            "size": "1024x1024",
-            "format": "png",
-            "status": "completed",
-            "url": "https://example.com/generated-image.png",
-            "quality_score": 85,
-            "created_at": datetime.utcnow().isoformat()
-        }
-        
-        return image
-        
+
+        image = await db.get(Image, uuid.UUID(image_id))
+        if image is None:
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_id}")
+
+        return model_to_dict(image)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -120,7 +139,7 @@ async def get_image(
 
 @router.get("/")
 async def list_images(
-    status: Optional[str] = None,
+    status: Optional[ImageStatus] = None,
     model: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -129,24 +148,25 @@ async def list_images(
     """List images"""
     try:
         logger.info("Listing images")
-        
-        # In production, this would query from database with filters
-        # For now, return a mock response
-        images = [
-            {
-                "id": "image_001",
-                "prompt": "A futuristic city skyline",
-                "model": "dall-e-3",
-                "status": "completed",
-                "created_at": datetime.utcnow().isoformat()
-            }
-        ]
-        
+
+        query = select(Image)
+        if status is not None:
+            query = query.where(Image.status == status)
+        if model is not None:
+            query = query.where(Image.model == model)
+
+        count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = count_result.scalar_one()
+
+        query = query.order_by(Image.created_at.desc()).limit(limit).offset(offset)
+        result = await db.execute(query)
+        images = [model_to_dict(i) for i in result.scalars().all()]
+
         return {
-            "total": len(images),
+            "total": total,
             "images": images,
             "filters": {
-                "status": status,
+                "status": status.value if status else None,
                 "model": model
             },
             "pagination": {
@@ -154,7 +174,7 @@ async def list_images(
                 "offset": offset
             }
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to list images: {e}")
         raise HTTPException(status_code=500, detail=str(e))

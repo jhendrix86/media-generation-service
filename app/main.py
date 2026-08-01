@@ -9,8 +9,11 @@ from contextlib import asynccontextmanager
 from loguru import logger
 import os
 
+from datetime import datetime
+
 from app.config import settings
 from app.database import init_db
+from app.services.api_engine import APIEngine
 from app.routers import images, videos, audio, media, templates
 
 
@@ -18,13 +21,16 @@ from app.routers import images, videos, audio, media, templates
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     logger.info("Starting Media Generation Service...")
-    
+
     # Initialize database
     await init_db()
-    
+
+    # Single shared API engine instance for the app's lifetime
+    app.state.api_engine = APIEngine()
+
     logger.info("Media Generation Service started successfully")
     yield
-    
+
     logger.info("Shutting down Media Generation Service...")
 
 
@@ -84,10 +90,11 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
+    logger.info("Health check performed")
     return {
         "status": "healthy",
         "service": "media-generation-service",
-        "timestamp": logger.info("Health check performed")
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 

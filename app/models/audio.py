@@ -2,7 +2,7 @@
 Audio models
 """
 
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Enum, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, Enum, ForeignKey, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
