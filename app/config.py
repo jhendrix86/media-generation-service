@@ -20,9 +20,6 @@ class Settings(BaseSettings):
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     stability_api_key: str = os.getenv("STABILITY_API_KEY", "")
     elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
-    leonardo_api_key: str = os.getenv("LEONARDO_API_KEY", "")
-    replicate_api_key: str = os.getenv("REPLICATE_API_KEY", "")
-    huggingface_api_key: str = os.getenv("HUGGINGFACE_API_KEY", "")
     
     # Storage
     aws_access_key: str = os.getenv("AWS_ACCESS_KEY", "")
@@ -46,6 +43,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # tolerate env vars owned by other libs/fields declared in app/utils/config.py's separate Settings class
 
 
 settings = Settings()
