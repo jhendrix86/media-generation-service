@@ -10,7 +10,7 @@ services:
       - "8045:8045"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/media
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6379/5
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - STABILITY_API_KEY=${STABILITY_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
@@ -30,37 +30,16 @@ services:
       - MARKETING_AUTOMATION_URL=http://marketing-automation-engine:8039
     volumes:
       - media-storage:/app/media_storage
-    depends_on:
-      - postgres
-      - redis
+    # No depends_on here - postgres/redis moved to shared infra
+    # (deploy/docker-compose.infra.yml), a different compose project.
+    # Bring that up first: deploy/03-build-and-up.sh infra-up
     networks:
-      - media-network
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: media-postgres
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=media
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - media-network
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    container_name: media-redis
-    networks:
-      - media-network
+      - os42-shared
     restart: unless-stopped
 
 networks:
-  media-network:
-    driver: bridge
+  os42-shared:
+    external: true
 
 volumes:
-  postgres-data:
   media-storage:
