@@ -3,8 +3,11 @@ version: '3.8'
 services:
   media-generation-service:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      # Workspace root, not just this repo - needed to reach the
+      # autonomy-events sibling package the Dockerfile copies in (see its
+      # own comment for why).
+      context: ../..
+      dockerfile: media-generation-service/docker/Dockerfile
     container_name: media-generation-service
     ports:
       - "8045:8045"
