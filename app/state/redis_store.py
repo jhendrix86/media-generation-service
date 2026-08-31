@@ -46,7 +46,11 @@ class RedisMediaStore:
             await self._client.setex(
                 key,
                 3600,  # 1 hour TTL
-                json.dumps(state.dict())
+                # mode="json" so datetimes/enums serialize - a bare .dict()
+                # keeps datetime objects and json.dumps() then raises,
+                # silently swallowed by this method's except -> state never
+                # persisted. (Config.json_encoders only applies to .json().)
+                json.dumps(state.model_dump(mode="json"))
             )
             
             # Also index by entity
